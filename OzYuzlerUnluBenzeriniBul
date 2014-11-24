@@ -1,0 +1,213 @@
+clear all;
+close all;
+clc;
+resimBoyut=200;%girişe alınan resimleri bu deger ile yeniden boyutlşandıracağız
+resimSayi=30;%toplam veri tabanındaki resim sayısı
+
+%veriTabani klasöründe yer alan ünlü rsimlerini alıyoruz.
+dYolu = fullfile('database\'); %dosya yolu
+dirCikis = dir(fullfile(dYolu,'*.png'));
+resimler = {dirCikis.name};
+
+%Aşşağıdaki döngüi, yukarıdaki kodlar ile resim isimlerini ve yollarını aldığımız
+%resimleri resim{} dizisinin elemanları olarak depoluyoruz. Bu sayede
+%gerektiğinde döngüler vasıtası resim datalarına ulaşacağız.
+resim=[];
+for i=1:resimSayi
+    resim{i}=imread(fullfile(dYolu,resimler{i}));
+    resim{i}=rgb2gray(resim{i});
+    resim{i}=im2double(resim{i});% Bu kodun amacı ortama vektör hesaplarken unit8'in 0-255 intervalinden kurtulmaktır.
+    %aksi vakdirde ortama vektör hesaplamak için tanımladığım sutun
+    %vektörünün her bir elemanı 255 olur.
+    resim{i}=imresize(resim{i},[resimBoyut resimBoyut] );%resimlerin yeniden boyutlandırma işlemi
+    
+end
+
+%Giriş resimlerinin boyutu NxN. Şimdi bunları özyüzler algoritmasında
+%kullanmak için (N^2)x1 vektör haline getirelim. Yani sonuç olarak resim matrisini sutun vektöre çevireceğiz.
+%Bunları resimG{i} ile temsil edelim.
+resimG=[];
+for i=1:resimSayi
+    resimG{i}=resim{i}(:);
+end
+
+%Daha sonra veri tabanındaki tüm görüntülerden ortalama görüntü vektörü
+%bulalım
+
+%öncelikle ortama görüntü vektörünü oluşturacak NxN içi 0 olan matris oluşturalım bunu toplamResim olarak adlandırdım.
+%Daha sonra bu matrisi (N^2)x1 vektör haline getireceğiz bunuda
+%toplamResimG olarak adlandırdım.
+toplamResim=zeros(resimBoyut,resimBoyut);
+toplamResimG=toplamResim(:); %NxN elemana sahip vektör haline geldi. 
+%Şimdi giriş resminden gelecek her bir matris elemanının toplamını tutacak vektöre sahibiz.
+
+%Bu döngü ile sutun vektörleri haline çevirdiğimiz her resimG{}
+%vektörlerinin aynı indisdeki eleman aynı eleman ile toplayarak yeni
+%toplamResimG vektörünü elde edelim.
+for i=1:resimSayi
+    for k=1:(resimBoyut*resimBoyut)
+        toplamResimG(k)=toplamResimG(k)+resimG{i}(k);
+    end
+end
+ortamaVektor=(1/resimSayi)*toplamResimG;
+
+%ortalama görüntü görüntülenmek istendiğinde elde 
+%edilen kolon matris NxN lik matrise dönüştürülebilir.
+
+%%Bundan sonra veriTabani klasörümüzdeki her bir resmin yalnız kendine has
+%niteliklerini ifade etmek için herbir görüntü vektörü yani resimG{} ile
+%ifade ettiğimiz görüntüden ortalama görüntü vektörünü çıkartacağız. Bu
+%sayade veritabanımızdaki ünlü resimlerinin hepsi için ortak olan benzer
+%yerlerini çıkarmış olacağız. Her bir resim için oluşacak bu fark
+%vektörünüde Q ile ifade edelim;
+Q=[];
+for i=1:resimSayi
+    Q{i}=resimG{i}-ortamaVektor;
+end
+
+%Oluşan bu fark vektörlerini veriTabani klasöründeki resim saysısı kadar
+%sutuna ve girişte tanımladığım resimBoyutu*resimBoyutu satır sayısına
+%sahip A matrisi tanımlayalım. Aslında bu A matrisi oluşturduğum A sutun
+%vektörlerinin  yan yana gelmesi ile elde edilmiş matris olacak.
+%A[Q1,Q2...QresimSayi] şeklinde olacaktır.
+
+%içi 0 olan yukarıda ifade ettiğim elemanların tamamını içine alacak A
+%matrisinin oluşumu:
+
+A=zeros(resimBoyut*resimBoyut,resimSayi);
+%veritabanımda 200x200 boyutlu resim olduğu düşünüldüğünde A matrisinin satir sayısı 4000 sutun sayısı 30 olur
+
+%Tüm Q fark vektörlerini A matrisine yerleştirelim.
+
+for i=1:(resimBoyut*resimBoyut)
+    for k=1:resimSayi
+        A(i,k)=Q{k}(i,1);
+    end
+end
+%Elde edilen giriş resimlerinden özyüzlerin elde edilebilmesi için A
+%matrisinden elde edilecek olan kovaryans işlemi yapalım. C=A'*A şeklinde
+%veya C=A*A' şeklinde hesaplanır. C=A'*A şeklini kullanacğım çünkü giriş
+%resimleri sayısı kadar satır ve sutuna sahip olacak böylelikle özdeger ve
+%öz vektör hesabı daha kolay olacak. 
+%Bir diğer taraftan veritabani klasöründeki resim sayısı öz yüzlerin sayısı ile ilişkilidir
+%C=A*A' kullanmış olsam da anlamlı olan özdeger vektörü sayısı aynı olacaktır
+C=A'*A;
+%Oluşturduğum C koveryans matrisinden özdeger ve özvektörü elde etmek için
+%eig() fonksiyonunu kullanacağım. özvektörler matrisi için V özdeger için D sembolünü
+%kullanacağım:Burada bizi ilgilendiren daha çok V olacak. eig() fonksiyonu
+%neticesinde resimSayi*resimSayi boyutunda matris elde edeceğiz.Bu matrisin sutunları veritabani klasöründeki resimlerin
+%özdeger vektörleridir.
+[V,U]=eig(C);
+
+%V matrisinden A*V öz vektörlerini kullanarak özyüzleri oluşturalım. V
+%matrisin her bir sutununun A ile çarpımı özyüz vektörü verecek.
+%vektörünü A ile çarpacağız.
+%Böylece giriş resimi hakkında bize en hususi bilgiyi verecektir. 
+
+%A*V çarpımı sonucunda oluşak vektör özyüz oluşturmak için kullanacağım
+%vektörler olacak. Bunların sayısı resim sayısı kadar olacak ve ozYuzVektor adında tanımlayacağım.
+ozYuzVektor=A*V;
+ozYuz=[];
+for i=1:resimSayi
+    j=0;
+    %Bu döngü ile oluşan ozYuzVektor vektörününün elemanlarını NxN boyutlu
+    %matris oluşturup sıra ile yerleştireceğim.
+    for k=1:resimBoyut
+        for s=1:resimBoyut
+            j=j+1;
+            ozYuz{i}(s,k)=ozYuzVektor(j,i);
+        end
+    end
+end
+%En geniş  öz degere sahip olan ağırlıkları hesaplamak için öz yüzleri öz
+%degere göre sıralayalım. Bunu için U  matrisinin köşegen matrisini alacağız. U matrisinin köşen dışındaki elemanları 0 dır. 
+%Bu sıralama en yüksek degerden en düşüge doğru olacak.
+kosegenU=diag(U);
+[kdeger,ksira]=sort(kosegenU,'descend');
+
+
+%Oluşturulan özvektörler, özyüz; özyüzlerin oluşturduğu matris ise görüntü uzayı olarak
+%ifade edilmektedir. Tanımlamanın yapılabilmesi için, her bir görüntünün, görüntü uzayı
+%üzerindeki izdüşümünün bulunması ve ağırlık vektörünün oluşturulması gerekmektedir. 
+%Ağırlıkları w[] ile ifade edeceğim. w[] degerinin hesaplanması için ozYuzVektor'*A
+%yadda ozYuzVektor'Q{i} işlemi yaplılır. 
+%Çünkü A matrisi Q fark kolon vektörlerini tutmaktadır amaç fark vektörlerini kullanarak ağırlık oluşturmaktır 
+ozYuzSayi=resimSayi;
+for i=1:resimSayi
+    for k=1:ozYuzSayi
+        w(i,k)=sum(A(:,i).*ozYuz{ksira(k)}(:));% w sutun vektörü olarak yazdırdığım degerlerinin büyükten küçüğe olduğunu görebiliriz
+    end
+end
+
+%w{i} vektörünün ölçüsü 1xM(ResimSayisi) kadar olacaktır.
+%Ağırlık vektörleri her bir görüntü için veri tabanında, w matrisinde saklanmaktadır.
+%w matrisi, tanımlama için esas olan ağırlık matrisidir.omega matrisimi ait olduğu özyüze karşılık gelen w{i} ağırlık vektörlerini tutar 
+
+
+%Özyüzlere göre oluşan bu ağırlık vektörleri
+%tanıma yapılması istenen yüzün özdeger vektörü ile hesaplanmış ağırlık
+%vektörü ile uzayda aralarındaki oklit mesafesine bakılacak aralarındaki
+%oklit mesafesi ne kadar az ise o kadar birbirine benziyorlar demektir.
+%Yani bir başka deyisşle vektmrlerin her bir elemanı birbirine ne kadar
+%yakın bunu kontrol edeceğiz.
+
+
+%%Dışarıdan alınan herhangi bir resmin benzerliğine bakalım.
+%Resim dahil et
+KresimSayi=1; %Benzerini bulmak için yolladığımız resimler saysısı.
+dosyaYolu = fullfile(''); %dosya yolu kodların olduğu dizinde olduğu için boş bıraktım.
+dirCikis1 = dir(fullfile(dosyaYolu,'*.jpg'));
+resimler1 = {dirCikis1.name};
+
+kEdilecekResim=[];
+for i=1:KresimSayi
+    kEdilecekResim{i}=imread(fullfile(dosyaYolu,resimler1{i}));
+    kEdilecekResim{i}=rgb2gray(kEdilecekResim{i});
+    kEdilecekResim{i}=im2double(kEdilecekResim{i});% Bu kodun amacı ortama vektör hesaplarken unit8'in 0-255 intervalinden kurtulmaktır.
+    %aksi vakdirde ortama vektör hesaplamak için tanımladığım sutun
+    %vektörünün her bir elemanı 255 olur.
+    kEdilecekResim{i}=imresize(kEdilecekResim{i},[resimBoyut resimBoyut] );%resimlerin yeniden boyutlandırma işlemi
+end
+%Bilinmeyen yüzün tanınması işlemi için yüze ait görüntü eğitim resimlerinde olduğu gibi
+%N^2x1 uzunluklu veköre dönüştürülür.kEdilecekResimG olarark tanımladım.
+
+for i=1:KresimSayi
+    kEdilecekResimG{i}=kEdilecekResim{i}(:);
+end
+
+%Görüntünün ortalama görüntüden farkı alınarak her bir özyüz üzerine
+%düşürerek ağırlık vektörü oluşumu aşağıdaki gibi olacaktır.
+%Oluşacak bu fark vektörlerini Qk{} olarak adlandıracağım
+
+%Bilinmeyen yüz görüntüsünden ortalama yüzün çıkarılması:
+Qk=[];
+for i=1:KresimSayi
+    Qk{1}=kEdilecekResimG{i}-ortamaVektor;
+end
+
+%Eğitim setindeki hangi resme ne kadar benzediğini bulmak için. Tanınması
+%istediğimiz resim için ağırlık vektörleri hesaplamalıyız. Ve daha sonra
+%aralarındaki öklit mesafelerine bakarak benzerliği hakkında bilgi sahibi
+%olacağız.
+
+for i=1:resimSayi
+    wk(i)= sum(Qk{1}.*ozYuz{ksira(i)}(:));
+end%Bu oluşan vektör 1xM boyutludur.
+
+%Eğitimseti ve benzerliği bulunmak istenen resim arasındaki öklit
+%uzaklığını hesaplayalım.
+
+%Ağırlıklar oluştu oklit mesafelerini hesaplayıp birbirlerine ne kara yakın
+%hesaplayalım. Bu w matrisinin MxM ve wk 1xM boyutludur buna göre oklit
+%mesafesi hesaplamak için for döngüsü:
+for i=1:resimSayi
+    ed=0;
+    for k=1:ozYuzSayi
+        ed =ed +(wk(k)-w(i,k)).^2;%oklit mesafesini hesapladık ağırlıkların.
+    end
+    E(i)=sqrt(ed);
+end
+%Eşleşmeyi bulmak için for ile döngüye sokuyoruz.
+[m,benzeyenResimNo]=min(E)
+bunulanResim=imread(fullfile(dYolu,resimler{benzeyenResimNo}));
+imshow(bunulanResim);title('Bu benim ünlü benzerim');
